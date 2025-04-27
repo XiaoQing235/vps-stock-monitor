@@ -140,26 +140,27 @@ class StockMonitor:
 
             # soup = BeautifulSoup(response.content, 'html.parser')
             soup = BeautifulSoup(content, 'html.parser')
-            if '宝塔防火墙正在检查您的访问' in content:
-                # todo: 绕过宝塔防火墙拦截
-                print('被宝塔防火墙拦截')
-                return None
 
-            if 'bagevm' in url:
-                print('检测BageVM中')
-                # 检测库存badge标签
-                stock_badges = soup.find_all('span', class_=lambda x: x and 'badge' in x)
-                for badge in stock_badges:
-                    badge_text = badge.get_text(strip=True)
-                    if 'Available' in badge_text:
-                        # 提取数字
-                        available_qty = ''.join(filter(str.isdigit, badge_text))
-                        if available_qty:
-                            return int(available_qty) > 0
-                        else:
-                            # 无法提取数字时降级检测
-                            return '0 Available' not in badge_text
-                # 未找到标签时视为缺货
+            if 'bagevm.com' in url:
+                # 定位到具体商品的库存标签（示例根据view-source.txt结构）
+                product_container = soup.find('div', class_='product-item')  # 根据实际HTML结构调整
+                if not product_container:
+                    return False
+
+                # 精准定位当前商品的库存标签
+                stock_badge = product_container.find('span', class_=lambda x: x and 'badge' in x)
+                if not stock_badge:
+                    return False
+
+                badge_text = stock_badge.get_text(strip=True)
+                if 'Available' in badge_text:
+                    available_qty = ''.join(filter(str.isdigit, badge_text))
+                    # 添加调试信息
+                    print(f"[Debug] {url} 库存标签: {badge_text} -> 解析数量: {available_qty}")
+                    if available_qty:
+                        return int(available_qty) > 0
+                    else:
+                        return '0 Available' not in badge_text
                 return False
             
             # 首先检查是否有指定class的div
