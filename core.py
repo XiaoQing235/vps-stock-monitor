@@ -141,42 +141,33 @@ class StockMonitor:
             # soup = BeautifulSoup(response.content, 'html.parser')
             soup = BeautifulSoup(content, 'html.parser')
 
-            if 'bagevm' in url:
-                print('检测BageVM逻辑')
-                # 定位到具体商品的库存标签（示例根据view-source.txt结构）
-                product_container = soup.find('div', class_='product-item')  # 根据实际HTML结构调整
-                if not product_container:
-                    return False
-
-                # 精准定位当前商品的库存标签
-                stock_badge = product_container.find('span', class_=lambda x: x and 'badge' in x)
-                if not stock_badge:
-                    return False
-
-                badge_text = stock_badge.get_text(strip=True)
-                if 'Available' in badge_text:
-                    available_qty = ''.join(filter(str.isdigit, badge_text))
-                    # 添加调试信息
-                    print(f"[Debug] {url} 库存标签: {badge_text} -> 解析数量: {available_qty}")
-                    if available_qty:
-                        return int(available_qty) > 0
-                    else:
-                        return '0 Available' not in badge_text
-                return False
+            stock_status = False
+            product_cards = soup.select('div.proprice.text-center')
+        
+            for card in product_cards:
+                # 提取产品名称
+                name_tag = card.select_one('h5')
+                if not name_tag:
+                    continue
             
-            # 首先检查是否有指定class的div
-            out_of_stock = soup.find('div', class_=alert_class)
-            if out_of_stock:
-                return False  # 缺货
-
-            # 其次，检查页面中是否包含 'out of stock', '缺货' 这类文字
-            out_of_stock_keywords = ['out of stock', '缺货', 'sold out', 'no stock', '缺貨中']
-            page_text = soup.get_text().lower()  # 获取网页的所有文本并转为小写
-            for keyword in out_of_stock_keywords:
-                if keyword in page_text:
-                    return False  # 缺货
-
-            return True  # 有货
+                # 检测库存标签
+                badge = card.select_one('.badge')
+                if badge:
+                    badge_text = badge.get_text(strip=True).lower()
+                    if 'available' in badge_text:  # 处理 "X Available" 格式
+                        available = int(badge_text.split()[0])
+                        stock_status = available > 0
+                    else:  # 通过class判断
+                        stock_status = 'badge-terminated' not in badge['class']
+                else:  # 备选方案：检测按钮状态
+                    order_button = card.select_one('a.btn.btn-info')
+                    if order_button:
+                        stock_status = 'disabled' not in order_button.get('class', [])
+            
+            # 匹配配置中的产品名称（取名称第一部分）
+            product_name = name_tag.get_text(strip=True).split('-')[0].strip()
+            if product_name in self.config['stock']:
+                return stock_status
             
         except Exception as e:
             print(f"Error fetching {url}: {e}")
