@@ -145,6 +145,22 @@ class StockMonitor:
                 print('被宝塔防火墙拦截')
                 return None
 
+            if 'bagevm.com' in url:
+                # 检测库存badge标签
+                stock_badges = soup.find_all('span', class_=lambda x: x and 'badge' in x)
+                for badge in stock_badges:
+                    badge_text = badge.get_text(strip=True)
+                    if 'Available' in badge_text:
+                        # 提取数字
+                        available_qty = ''.join(filter(str.isdigit, badge_text))
+                        if available_qty:
+                            return int(available_qty) > 0
+                        else:
+                            # 无法提取数字时降级检测
+                            return '0 Available' not in badge_text
+                # 未找到标签时视为缺货
+                return False
+            
             # 首先检查是否有指定class的div
             out_of_stock = soup.find('div', class_=alert_class)
             if out_of_stock:
