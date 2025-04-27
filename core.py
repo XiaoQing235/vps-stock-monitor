@@ -141,7 +141,8 @@ class StockMonitor:
             # soup = BeautifulSoup(response.content, 'html.parser')
             soup = BeautifulSoup(content, 'html.parser')
 
-            if 'bagevm.com' in url:
+            if 'bagevm' in url:
+                print('检测BageVM逻辑')
                 # 定位到具体商品的库存标签（示例根据view-source.txt结构）
                 product_container = soup.find('div', class_='product-item')  # 根据实际HTML结构调整
                 if not product_container:
