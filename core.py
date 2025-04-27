@@ -145,7 +145,8 @@ class StockMonitor:
                 print('被宝塔防火墙拦截')
                 return None
 
-            if 'bagevm.com' in url:
+            if 'bagevm' in url:
+                print('检测BageVM中')
                 # 检测库存badge标签
                 stock_badges = soup.find_all('span', class_=lambda x: x and 'badge' in x)
                 for badge in stock_badges:
