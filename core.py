@@ -154,8 +154,9 @@ class StockMonitor:
                 badge = card.select_one('.badge')
                 if badge:
                     badge_text = badge.get_text(strip=True).lower()
-                    if 'available' in badge_text:  # 处理 "X Available" 格式
-                        available = int(badge_text.split()[0])
+                    if 'available' in badge_text:
+                        available_str = ''.join(filter(str.isdigit, badge_text))  # 提取数字部分
+                        available = int(available_str) if available_str else 0
                         stock_status = available > 0
                     else:  # 通过class判断
                         stock_status = 'badge-terminated' not in badge['class']
@@ -165,7 +166,10 @@ class StockMonitor:
                         stock_status = 'disabled' not in order_button.get('class', [])
             
             # 匹配配置中的产品名称（取名称第一部分）
-            product_name = name_tag.get_text(strip=True).split('-')[0].strip()
+            # 修改前（模糊匹配）
+            #product_name = name_tag.get_text(strip=True).split('-')[0].strip()
+            # 修改后（精确匹配全称）
+            product_name = name_tag.get_text(strip=True).split('<em>')[0].strip()
             if product_name in self.config['stock']:
                 return stock_status
             
