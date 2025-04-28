@@ -4,7 +4,7 @@ import requests
 from bs4 import BeautifulSoup
 from datetime import datetime
 import os
-import random
+
 
 class StockMonitor:
     def __init__(self, config_path='data/config.json'):
@@ -12,7 +12,6 @@ class StockMonitor:
         self.blocked_urls = set()  # 存储已经代理过的URL
         self.proxy_host = os.getenv("PROXY_HOST", None)  # 从环境变量读取
         self.load_config()
-
 
     # 加载配置文件
     def load_config(self):
@@ -24,7 +23,7 @@ class StockMonitor:
         # 如果配置文件不存在，生成一个初始配置
         if not os.path.exists(self.config_path):
             self.create_initial_config()
-            
+
         with open(self.config_path, 'r') as f:
             self.config = json.load(f)
         self.frequency = int(self.config['config'].get('frequency', 300))  # 默认检查频率为300秒
@@ -45,7 +44,7 @@ class StockMonitor:
         with open(self.config_path, 'w') as f:
             json.dump(default_config, f, indent=4)
         print("配置文件已生成：", self.config_path)
-        
+
     # 保存配置文件
     def save_config(self):
         with open(self.config_path, 'w') as f:
@@ -53,7 +52,7 @@ class StockMonitor:
         print("配置已更新")
 
     # 检查商品库存状态
-    def check_stock(self, url, alert_class="alert alert-danger error-heading"):
+    def check_stock(self, url, pro):
 
         headers = {
             'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
@@ -71,108 +70,50 @@ class StockMonitor:
             'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 Edg/130.0.0.0',
         }
 
-        def fetch_flaresolverr(url):
-            print(f"Using proxy for {url}")
-            headers = {"Content-Type": "application/json"}
-            data = {
-                "cmd": "request.get",
-                "url": url,
-                "maxTimeout": 60000
-            }
-            response = requests.post(f'{self.proxy_host}/v1', headers=headers, json=data)
-            return response, response.json()['solution']['response']
-
         try:
+            response = requests.get(url, headers=headers)
+            print(response.status_code)
 
-            if not self.proxy_host:
-                response = requests.get(url, headers=headers)
-                print(response.status_code)
-                if response.status_code == 403:
-                    print(f"Error fetching {url}: Status code {response.status_code}. Try to set host.")
-                    return None
-                content = response.content
-            else:   
-                # cloudflare-bypass 效果不佳
-                # # 如果设置了代理，进行代理逻辑
-                # if url in self.blocked_urls:
-                #     # 如果URL在blocked_urls中，直接使用代理请求
-                #     print(f"Using proxy for {url}")
-                #     proxy_url = f"{self.proxy_host}/html?url={url}"
-                #     print(proxy_url)
-                #     response = requests.get(proxy_url, headers=headers)
-                # else:
-                #     # 尝试非代理请求
-                #     response = requests.get(url, headers=headers)
-                #     if response.status_code != 200:
-                #         print(f"Failed to fetch {url}: Status code {response.status_code}. Trying proxy...")
-                #         proxy_url = f"{self.proxy_host}/html?url={url}"
-                #         response = requests.get(proxy_url, headers=headers)
-                #         if response.status_code == 200:
-                #             self.blocked_urls.add(url)  # 记录该URL，未来通过代理访问
-                # # 如果最终响应状态不是200，输出错误并返回None
-                # if response.status_code != 200:
-                #     print(f"Error fetching {url} via proxy. Status code {response.status_code}")
-                #     return None
+            if response.status_code != 200:
+                print(f"Error fetching {url}. Status code {response.status_code}")
+                return None
 
-                # 如果设置了代理，进行代理逻辑
-                if url in self.blocked_urls:
-                    print('url in set')
-                    # 如果URL在blocked_urls中，直接使用代理请求
-                    response, content = fetch_flaresolverr(url)
-                    # 5% 的概率删除该 URL
-                    if random.random() < 0.05:
-                        print(f"Random chance hit: Deleting {url} from blocked list.")
-                        self.blocked_urls.remove(url)
-                            
-                else:
-                    # 尝试非代理请求
-                    response = requests.get(url, headers=headers)
-                    if response.status_code == 403:
-                        print(f'Return  {response.status_code}')
-                        response, content = fetch_flaresolverr(url)
-                        if response.status_code == 200:
-                            self.blocked_urls.add(url)  # 记录该URL，未来通过代理访问
-                    content = response.content
-                # 如果最终响应状态不是200，输出错误并返回None
-                if response.status_code != 200:
-                    print(f"Error fetching {url} via proxy. Status code {response.status_code}")
-                    return None
+            soup = BeautifulSoup(response.content, 'html.parser')
 
-            # soup = BeautifulSoup(response.content, 'html.parser')
-            soup = BeautifulSoup(content, 'html.parser')
-
-            stock_status = False
-            product_cards = soup.select('div.proprice.text-center')
-        
-            for card in product_cards:
-                # 提取产品名称
-                name_tag = card.select_one('h5')
-                if not name_tag:
+            products = []
+            # 第一步：完整解析所有产品
+            for product_div in soup.find_all('div', class_='col-md-3'):
+                h5 = product_div.find('h5')
+                if not h5:
                     continue
-            
-                # 检测库存标签
-                badge = card.select_one('.badge')
-                if badge:
-                    badge_text = badge.get_text(strip=True).lower()
-                    if 'available' in badge_text:
-                        available_str = ''.join(filter(str.isdigit, badge_text))  # 提取数字部分
-                        available = int(available_str) if available_str else 0
-                        stock_status = available > 0
-                    else:  # 通过class判断
-                        stock_status = 'badge-terminated' not in badge['class']
-                else:  # 备选方案：检测按钮状态
-                    order_button = card.select_one('a.btn.btn-info')
-                    if order_button:
-                        stock_status = 'disabled' not in order_button.get('class', [])
-            
-            # 匹配配置中的产品名称（取名称第一部分）
-            # 修改前（模糊匹配）
-            #product_name = name_tag.get_text(strip=True).split('-')[0].strip()
-            # 修改后（精确匹配全称）
-            product_name = name_tag.get_text(strip=True).split('<em>')[0].strip()
-            if product_name in self.config['stock']:
-                return stock_status
-            
+
+                # 提取可用数量
+                em_tag = h5.find('em')
+                available = em_tag.find('span').text.strip() if em_tag else 'N/A'
+
+                # 提取产品名称（排除em部分）
+                name = h5.text.replace(em_tag.text, '').strip() if em_tag else h5.text.strip()
+
+                products.append({
+                    'name': name,
+                    'available': available
+                })
+
+            # 第二步：在所有产品解析完成后统一检查
+            print("完整产品列表:")
+            for product in products:
+                print(f"{product['name']}, 可用数量: {product['available']}")
+
+            # 执行库存检查逻辑
+            for product in products:
+                if product['name'] == pro:  # 这里需要传入具体要检查的产品名称
+                    available_num = int(product['available'].split()[0])
+                    print(f"找到目标产品，库存: {available_num}")
+                    return available_num > 0
+
+            print("未找到对应产品")
+            return False
+
         except Exception as e:
             print(f"Error fetching {url}: {e}")
             return None
@@ -181,7 +122,7 @@ class StockMonitor:
     def send_message(self, message):
         # 获取通知类型
         notice_type = self.config['config'].get('notice_type', 'telegram')
-        
+
         if notice_type == 'telegram':
             # 读取 Telegram 配置
             telegram_token = self.config['config'].get('telegrambot')
@@ -199,7 +140,7 @@ class StockMonitor:
                     print(f"Failed to send message via Telegram: {response.status_code}")
             except Exception as e:
                 print(f"Error sending message via Telegram: {e}")
-        
+
         elif notice_type == 'wechat':
             # 读取微信配置
             wechat_key = self.config['config'].get('wechat_key')  # 获取微信推送密钥
@@ -220,7 +161,7 @@ class StockMonitor:
                     print(f"Error sending message via WeChat: {e}")
             else:
                 print("WeChat key not found in configuration.")
-        
+
         elif notice_type == 'custom':
             # 读取自定义 URL 配置
             custom_url = self.config['config'].get('custom_url')
@@ -238,29 +179,32 @@ class StockMonitor:
             else:
                 print("Custom URL not found in configuration.")
 
-
     # 刷新配置文件中的库存状态
     def update_stock_status(self):
+        global status_text
         has_change = False
         # print(self.config['stock'])
         for name, item in self.config['stock'].items():
             url = item['url']
-            last_status = item.get('status',False)
+            last_status = item.get('status', False)
 
             # 检查库存状态
-            current_status = self.check_stock(url)
+            current_status = self.check_stock(url, name)
+            status_text = "缺货"
 
             # 如果状态发生变化，发送通知
-            if current_status is not None and current_status != last_status:
-                status_text = "有货" if current_status else "缺货"
-                message = f"{name} 库存变动 {status_text}\n购买 {url}"
-                self.send_message(message)
+            if (current_status is not None
+                    and current_status is not False):
+                status_text = "有货"
+                if (current_status != last_status):
+                    message = f"{name} 库存变动 {status_text}\n购买 {url}"
+                    self.send_message(message)
 
                 # 更新库存状态
                 self.config['stock'][name]['status'] = current_status
                 has_change = True
             # 打印当前时间和摘要
-            print(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - {name}: {'有货' if current_status else '缺货'}")
+            print(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - {name}: {status_text}")
 
         if has_change:
             # 保存更新后的配置
@@ -271,14 +215,17 @@ class StockMonitor:
         print("开始库存监控...")
         while True:
             print(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} 检测库存")
-            try: self.update_stock_status()
-            except Exception as e: print(f'循环中发生错误 {str(e)}')
+            try:
+                self.update_stock_status()
+            except Exception as e:
+                print(f'循环中发生错误 {str(e)}')
             time.sleep(self.frequency)
 
     # 外部重载配置方法
     def reload(self):
         print("重新加载配置...")
         self.load_config()
+
 
 # 示例运行
 if __name__ == "__main__":
